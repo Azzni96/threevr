@@ -633,8 +633,22 @@ function onSelectEnd(event) {
       object.material.emissive.b = 0;
     }
     // restore to previous parent or to group
-    if (controller.userData.prevParent) controller.userData.prevParent.add(object);
-    else group.add(object);
+    // Use attach() to preserve the object's world transform when re-parenting.
+    // .add() changes local transform which can make the object appear to jump or disappear.
+    if (controller.userData.prevParent) {
+      try {
+        controller.userData.prevParent.attach(object);
+      } catch (e) {
+        // if attach fails for some reason, fallback to add()
+        controller.userData.prevParent.add(object);
+      }
+    } else {
+      try {
+        group.attach(object);
+      } catch (e) {
+        group.add(object);
+      }
+    }
     controller.userData.selected = undefined;
     delete controller.userData.prevParent;
   }
@@ -688,16 +702,19 @@ renderer.setAnimationLoop(() => {
 
           // If user requested Inside VR but model is very large or very small, prefer in-front placement
           if (vrInsideMode) {
-            if (maxDim > 4.0 || maxDim < 0.5) {
-              // place comfortably in front using a scale depending on model size
+            // Always attempt to position the user inside the model when the
+            // "Inside VR" option is enabled. If positioning fails (empty
+            // bounds, unexpected transform, or any error), fall back to placing
+            // the model in front of the user so the scene remains usable.
+            try {
+              positionModelInside(loadedModel, { minSize: 1.6, preserveY: false, standOnFloor: true, eyeHeight: 1.6 });
+            } catch (e) {
+              console.warn('positionModelInside failed, falling back to in-front placement', e);
               const dist = Math.max(1.2, maxDim * 0.6);
               positionModelInFrontOfViewer(loadedModel, dist);
-            } else {
-              // try to position the user inside the model
-              positionModelInside(loadedModel, { minSize: 1.6, preserveY: false, standOnFloor: true, eyeHeight: 1.6 });
             }
           } else {
-            // not inside mode: place in front, scale distance with model size
+            // Not inside mode: place in front, scale distance with model size
             const dist = Math.max(1.2, maxDim * 0.6);
             positionModelInFrontOfViewer(loadedModel, dist);
           }
